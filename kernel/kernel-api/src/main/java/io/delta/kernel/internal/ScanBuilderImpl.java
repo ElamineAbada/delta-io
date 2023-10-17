@@ -39,7 +39,7 @@ import io.delta.kernel.internal.util.VectorUtils;
  * Implementation of {@link ScanBuilder}.
  */
 public class ScanBuilderImpl
-    implements ScanBuilder {
+        implements ScanBuilder {
 
     private final StructType snapshotSchema;
     private final CloseableIterator<FilteredColumnarBatch> filesIter;
@@ -51,11 +51,11 @@ public class ScanBuilderImpl
     private Optional<Predicate> predicate;
 
     public ScanBuilderImpl(
-        Path dataPath,
-        Lazy<Tuple2<Protocol, Metadata>> protocolAndMetadata,
-        StructType snapshotSchema,
-        CloseableIterator<FilteredColumnarBatch> filesIter,
-        TableClient tableClient) {
+            Path dataPath,
+            Lazy<Tuple2<Protocol, Metadata>> protocolAndMetadata,
+            StructType snapshotSchema,
+            CloseableIterator<FilteredColumnarBatch> filesIter,
+            TableClient tableClient) {
         this.dataPath = dataPath;
         this.snapshotSchema = snapshotSchema;
         this.filesIter = filesIter;
@@ -77,7 +77,12 @@ public class ScanBuilderImpl
 
     @Override
     public ScanBuilder withReadSchema(TableClient tableClient, StructType readSchema) {
-        // TODO: validate the readSchema is a subset of the table schema
+        for (String fieldName : readSchema.fieldNames()) {
+            if (!snapshotSchema.fieldNames().contains(fieldName)) {
+                throw new IllegalArgumentException("Field '" + fieldName +
+                        "' is not present in the table schema.");
+            }
+        }
         this.readSchema = readSchema;
         return this;
     }
@@ -85,28 +90,28 @@ public class ScanBuilderImpl
     @Override
     public Scan build() {
         // TODO: support timestamp type partition columns
-        // Timestamp partition columns have complicated semantics related to timezones so block this
+        // Timestamp partition columns have complicated semantics related to timezones
+        // so block this
         // for now
         List<String> partitionCols = VectorUtils.toJavaList(
                 protocolAndMetadata.get()._2.getPartitionColumns());
         for (String colName : partitionCols) {
             if (readSchema.indexOf(colName) >= 0 &&
-                readSchema.get(colName).getDataType() instanceof TimestampType) {
+                    readSchema.get(colName).getDataType() instanceof TimestampType) {
                 throw new UnsupportedOperationException(String.format(
-                    "Reading partition columns of TimestampType is unsupported.\n" +
-                        "readSchema: %s\npartitionColumns: %s",
-                    readSchema,
-                    partitionCols
-                ));
+                        "Reading partition columns of TimestampType is unsupported.\n" +
+                                "readSchema: %s\npartitionColumns: %s",
+                        readSchema,
+                        partitionCols));
             }
         }
 
         return new ScanImpl(
-            snapshotSchema,
-            readSchema,
-            protocolAndMetadata,
-            filesIter,
-            predicate,
-            dataPath);
+                snapshotSchema,
+                readSchema,
+                protocolAndMetadata,
+                filesIter,
+                predicate,
+                dataPath);
     }
 }
