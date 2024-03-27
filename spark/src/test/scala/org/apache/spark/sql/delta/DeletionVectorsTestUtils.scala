@@ -316,7 +316,7 @@ trait DeletionVectorsTestUtils extends QueryTest with SharedSparkSession with De
         }
         writeFileWithDV(log, file, bitmap)
       }
-      txn.commit(actions, DeltaOperations.Delete(predicate = Seq.empty))
+      txn.commit(actions, DeltaOperations.Delete(predicate = Seq.empty, txn.metadata))
     }
     numFiles.get * numRowsToRemovePerFile
   }

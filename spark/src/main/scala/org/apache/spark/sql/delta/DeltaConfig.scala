@@ -754,6 +754,16 @@ trait DeltaConfigsBase extends DeltaLogging {
     _ => true,
     "A string-to-string map of configuration properties for the managed commit owner.")
 
+  /**
+   * Maximum amount of characters in a transaction predicate debug output
+   */
+  val MAX_AMOUNT_OF_CHAR_IN_TRANSACTION_PREDICATE_DEBUG = buildConfig[Int](
+    "maxAmountOfCharInTransactionPredicateDebug",
+    "4096",
+    _.toInt,
+    _ > 3,
+    "needs to be greater than 3.")
+
   val IN_COMMIT_TIMESTAMPS_ENABLED = buildConfig[Boolean](
     "enableInCommitTimestamps-dev",
     false.toString,

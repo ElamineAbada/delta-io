@@ -17,8 +17,8 @@
 package org.apache.spark.sql.delta
 
 import org.apache.spark.sql.delta.test.{DeltaExcludedTestMixin, DeltaSQLCommandTest}
-
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.functions.col
 
 class DeleteSQLSuite extends DeleteSuiteBase
   with DeltaSQLCommandTest {
@@ -79,6 +79,60 @@ class DeleteSQLSuite extends DeleteSuiteBase
           val _change_type = row.getString(1)
           assert(_change_type === "foo", s"Invalid _change_type for id=${row.get(0)}")
         }
+      }
+    }
+  }
+
+
+  test("DELETE with huge predicate - with low limit") {
+    withSQLConf(
+      DeltaConfigs.MAX_AMOUNT_OF_CHAR_IN_TRANSACTION_PREDICATE_DEBUG
+        .defaultTablePropertyKey -> "4") {
+      withTempDir { dirName =>
+        val path = dirName.getAbsolutePath
+        spark.range(0, 10, step = 1).withColumn("id2", col("id") + 10
+        ).write.format("delta").save(path)
+        val tableName = s"delta.`$path`"
+        spark.sql(s"DELETE FROM $tableName WHERE id in (${
+          (5 to 10000).toSet.mkString(",")
+        }) and id2 in (${(16 to 20000).toSet.mkString(",")})")
+        val log = DeltaLog.forTable(spark, path)
+        assert(log.history.getHistory(0).head.operationParameters("predicate").
+          length == (4 + 4)) // 4 is for the extra [" and "]
+      }
+    }
+  }
+
+  test("DELETE with huge predicate - with default limit") {
+    withTempDir { dirName =>
+      val path = dirName.getAbsolutePath
+      spark.range(0, 10, step = 1).withColumn("id2", col("id") + 10
+      ).write.format("delta").save(path)
+      val tableName = s"delta.`$path`"
+      spark.sql(s"DELETE FROM $tableName WHERE id in (${
+        (5 to 10000).toSet.mkString(",")
+      }) and id2 in (${(16 to 20000).toSet.mkString(",")})")
+      val log = DeltaLog.forTable(spark, path)
+      assert(log.history.getHistory(0).head.operationParameters("predicate").
+        length == (4096 + 4)) // 4 is for the extra [" and "]
+    }
+  }
+
+  test("DELETE with huge predicate - with high limit") {
+    withSQLConf(
+      DeltaConfigs.MAX_AMOUNT_OF_CHAR_IN_TRANSACTION_PREDICATE_DEBUG
+        .defaultTablePropertyKey -> "99999999") {
+      withTempDir { dirName =>
+        val path = dirName.getAbsolutePath
+        spark.range(0, 10, step = 1).withColumn("id2", col("id") + 10
+        ).write.format("delta").save(path)
+        val tableName = s"delta.`$path`"
+        spark.sql(s"DELETE FROM $tableName WHERE id in (${
+          (5 to 10000).toSet.mkString(",")
+        }) and id2 in (${(16 to 20000).toSet.mkString(",")})")
+        val log = DeltaLog.forTable(spark, path)
+        assert(log.history.getHistory(0).head.operationParameters("predicate").
+          length < (99999999 + 4)) // 4 is for the extra [" and "]
       }
     }
   }
