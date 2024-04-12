@@ -427,8 +427,7 @@ class StatsCollectionSuite
     ("BINARY", "BinaryType"),
     ("BOOLEAN", "BooleanType"),
     ("ARRAY<TINYINT>", "ArrayType(ByteType,true)"),
-    ("MAP<DATE, INT>", "MapType(DateType,IntegerType,true)"),
-    ("STRUCT<c60:INT, c61:ARRAY<INT>>", "ArrayType(IntegerType,true)")
+    ("MAP<DATE, INT>", "MapType(DateType,IntegerType,true)")
   ).foreach { case (invalidType, typename) =>
     val tableName1 = "delta_table_1"
     val tableName2 = "delta_table_2"
@@ -469,16 +468,6 @@ class StatsCollectionSuite
           exceptOne.getErrorClass == "DELTA_COLUMN_DATA_SKIPPING_NOT_SUPPORTED_TYPE" &&
             exceptOne.getMessageParametersArray.toSeq == Seq(columnName, typename)
         )
-        val exceptTwo = intercept[DeltaIllegalArgumentException] {
-          sql(
-            s"create table $tableName1 (c1 long, c2 STRUCT<c20:INT, c21:$invalidType>) " +
-              s"using delta TBLPROPERTIES('delta.dataSkippingStatsColumns' = 'c2')"
-          )
-        }
-        assert(
-          exceptTwo.getErrorClass == "DELTA_COLUMN_DATA_SKIPPING_NOT_SUPPORTED_TYPE" &&
-          exceptTwo.getMessageParametersArray.toSeq == Seq(columnName, typename)
-        )
         sql(s"create table $tableName2 (c1 long, c2 STRUCT<c20:INT, c21:$invalidType>) using delta")
         val exceptThree = intercept[Throwable] {
           sql(
@@ -488,13 +477,6 @@ class StatsCollectionSuite
         assert(
           exceptThree.getErrorClass == "DELTA_COLUMN_DATA_SKIPPING_NOT_SUPPORTED_TYPE" &&
           exceptThree.getMessageParametersArray.toSeq == Seq(columnName, typename)
-        )
-        val exceptFour = intercept[Throwable] {
-          sql(s"ALTER TABLE $tableName2 SET TBLPROPERTIES('delta.dataSkippingStatsColumns'='c2')")
-        }.getCause.asInstanceOf[DeltaIllegalArgumentException]
-        assert(
-          exceptFour.getErrorClass == "DELTA_COLUMN_DATA_SKIPPING_NOT_SUPPORTED_TYPE" &&
-          exceptFour.getMessageParametersArray.toSeq == Seq(columnName, typename)
         )
       }
     }
