@@ -61,7 +61,7 @@ import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.catalyst.analysis.UnresolvedTableImplicits._
 import org.apache.spark.sql.catalyst.parser.{ParseErrorListener, ParseException, ParserInterface}
 import org.apache.spark.sql.catalyst.parser.ParserUtils.{checkDuplicateClauses, string, withOrigin}
-import org.apache.spark.sql.catalyst.plans.logical.{AlterTableAddConstraint, AlterTableDropConstraint, AlterTableDropFeature, CloneTableStatement, LogicalPlan, RestoreTableStatement}
+import org.apache.spark.sql.catalyst.plans.logical.{AlterColumnSyncIdentity, AlterTableAddConstraint, AlterTableDropConstraint, AlterTableDropFeature, CloneTableStatement, LogicalPlan, RestoreTableStatement}
 import org.apache.spark.sql.catalyst.trees.Origin
 import org.apache.spark.sql.connector.catalog.{CatalogV2Util, TableCatalog}
 import org.apache.spark.sql.errors.QueryParsingErrors
@@ -554,6 +554,19 @@ class DeltaSqlAstBuilder extends DeltaSqlBaseBaseVisitor[AnyRef] {
         "ALTER TABLE ... DROP CONSTRAINT"),
       ctx.name.getText,
       ifExists = ctx.EXISTS != null)
+  }
+
+  /**
+   * `ALTER TABLE ALTER COLUMN SYNC IDENTITY` command.
+   */
+  override def visitAlterTableSyncIdentity(
+      ctx: AlterTableSyncIdentityContext): LogicalPlan = withOrigin(ctx) {
+    val verb = if (ctx.CHANGE != null) "CHANGE" else "ALTER"
+    AlterColumnSyncIdentity(
+      UnresolvedTable(ctx.table.identifier.asScala.map(_.getText).toSeq,
+        s"ALTER TABLE ... $verb COLUMN"),
+      UnresolvedFieldName(visitMultipartIdentifier(ctx.column))
+    )
   }
 
   /**
