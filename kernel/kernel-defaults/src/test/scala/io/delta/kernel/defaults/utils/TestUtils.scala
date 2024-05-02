@@ -121,17 +121,6 @@ trait TestUtils extends Assertions with SQLHelper {
     lazy val classLoader: ClassLoader = ResourceLoader.getClass.getClassLoader
   }
 
-  /**
-   * Drops table `tableName` after calling `f`.
-   */
-  def withTable(tableNames: String*)(f: => Unit): Unit = {
-    try f finally {
-      tableNames.foreach { name =>
-        spark.sql(s"DROP TABLE IF EXISTS $name")
-      }
-    }
-  }
-
   def withGoldenTable(tableName: String)(testFunc: String => Unit): Unit = {
     val tablePath = GoldenTableUtils.goldenTablePath(tableName)
     testFunc(tablePath)
