@@ -95,17 +95,6 @@ public class TableConfig<T> {
             "needs to be a boolean."
     );
 
-    /**
-     * Whether this Delta table is append-only. Files can't be deleted, or values can't be updated.
-     */
-    public static final TableConfig<Boolean> IS_APPEND_ONLY = new TableConfig<>(
-        "delta.appendOnly",
-        "false",
-        Boolean::valueOf,
-        value -> true,
-        "needs to be a boolean."
-    );
-
     private final String key;
     private final String defaultValue;
     private final Function<String, T> fromString;
