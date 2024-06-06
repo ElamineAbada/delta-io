@@ -199,10 +199,12 @@ public interface Scan {
 
                 // Transform physical variant columns (struct of binaries) into logical variant
                 // columns.
-                nextDataBatch = VariantUtils.withVariantColumns(
-                    engine.getExpressionHandler(),
-                    nextDataBatch
-                );
+                if (ScanStateRow.getVariantFeatureEnabled(scanState)) {
+                    nextDataBatch = VariantUtils.withVariantColumns(
+                        engine.getExpressionHandler(),
+                        nextDataBatch
+                    );
+                }
 
                 // Add partition columns
                 nextDataBatch =
