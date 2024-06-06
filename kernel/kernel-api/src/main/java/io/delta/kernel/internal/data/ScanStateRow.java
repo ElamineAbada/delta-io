@@ -153,7 +153,7 @@ public class ScanStateRow extends GenericRow {
         return scanState.getString(COL_NAME_TO_ORDINAL.get("tablePath"));
     }
 
-     /**
+    /**
      * Get whether the "variantType" table feature is enabled from scan state {@link Row} returned
      * by {@link Scan#getScanState(Engine)}
      *
