@@ -36,6 +36,7 @@ import io.delta.kernel.internal.deletionvectors.RoaringBitmapArray;
 import io.delta.kernel.internal.util.ColumnMapping;
 import io.delta.kernel.internal.util.PartitionUtils;
 import io.delta.kernel.internal.util.Tuple2;
+import io.delta.kernel.internal.util.VariantUtils;
 
 /**
  * Represents a scan of a Delta table.
@@ -200,6 +201,15 @@ public interface Scan {
                 }
                 if (rowIndexOrdinal != -1) {
                     nextDataBatch = nextDataBatch.withDeletedColumnAt(rowIndexOrdinal);
+                }
+
+                // Transform physical variant columns (struct of binaries) into logical variant
+                // columns.
+                if (ScanStateRow.getVariantFeatureEnabled(scanState)) {
+                    nextDataBatch = VariantUtils.withVariantColumns(
+                        engine.getExpressionHandler(),
+                        nextDataBatch
+                    );
                 }
 
                 // Add partition columns
