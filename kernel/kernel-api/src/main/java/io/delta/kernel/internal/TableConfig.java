@@ -62,7 +62,43 @@ public class TableConfig<T> {
             "10",
             Integer::valueOf,
             value -> value > 0,
+
             "needs to be a positive integer."
+    );
+
+    /**
+     * The shortest duration we have to keep logically deleted data files around before deleting
+     * them physically. This is to prevent failures in stale readers after compactions or partition
+     * overwrites.
+     *
+     * Note: this value should be large enough:
+     * - It should be larger than the longest possible duration of a job if you decide to run
+     * "VACUUM" when there are concurrent readers or writers accessing the table.
+     * - If you are running a streaming query reading from the table, you should make sure the query
+     *   doesn't stop longer than this value. Otherwise, the query may not be able to restart as it
+     *   still needs to read old files.
+     *
+     * We didn't validate the value is greater than 0. In standalone lib, the log expire time is
+     * based on day, so if we want to clean the log immediately, we need to config the value to
+     * "-1 days", so here didn't validate the value.
+     * See: io.delta.standalone.internal.MetadataCleanup#cleanUpExpiredLogs().
+     */
+    public static final TableConfig<Long> LOG_RETENTION = new TableConfig<>(
+            "delta.logRetentionDuration",
+            "interval 30 days",
+            IntervalParserUtils::safeParseIntervalAsMillis,
+            value -> true,
+            "needs to be provided as a calendar interval such as '2 weeks'. Months "
+                + "and years are not accepted. You may specify '365 days' for a year instead."
+        );
+
+    /** Whether to clean up expired checkpoints and delta logs. */
+    public static final TableConfig<Boolean> ENABLE_EXPIRED_LOG_CLEANUP = new TableConfig<>(
+            "delta.enableExpiredLogCleanup",
+            "true",
+        Boolean::valueOf,
+            value -> true,
+            "needs to be a boolean."
     );
 
     /**
@@ -93,6 +129,10 @@ public class TableConfig<T> {
         this.fromString = fromString;
         this.validator = validator;
         this.helpMessage = helpMessage;
+    }
+
+    public String key() {
+        return key;
     }
 
     /**

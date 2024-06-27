@@ -114,6 +114,16 @@ public final class FileNames {
     }
 
     /**
+     * Returns the prefix of all checkpoint files for the given version.
+     *
+     * Intended for use with listFrom to get all files from this version onwards. The returned Path
+     * will not exist as a file.
+     */
+    public static Path checkpointPrefix(Path path, long version) {
+        return new Path(path, String.format("%020d.checkpoint", version));
+    }
+
+    /**
      * Returns the path for a V2 sidecar file with a given UUID.
      */
     public static Path v2CheckpointSidecarFile(Path path, String uuid) {
