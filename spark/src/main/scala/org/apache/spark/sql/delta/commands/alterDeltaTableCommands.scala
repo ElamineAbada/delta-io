@@ -30,12 +30,14 @@ import org.apache.spark.sql.delta.actions.TableFeatureProtocolUtils
 import org.apache.spark.sql.delta.catalog.DeltaTableV2
 import org.apache.spark.sql.delta.commands.columnmapping.RemoveColumnMappingCommand
 import org.apache.spark.sql.delta.constraints.{CharVarcharConstraint, Constraints}
+import org.apache.spark.sql.delta.logging.DeltaLogKeys
 import org.apache.spark.sql.delta.schema.{SchemaMergingUtils, SchemaUtils}
 import org.apache.spark.sql.delta.schema.SchemaUtils.transformSchema
 import org.apache.spark.sql.delta.sources.DeltaSQLConf
 import org.apache.spark.sql.delta.stats.StatisticsCollection
 import org.apache.hadoop.fs.Path
 
+import org.apache.spark.internal.MDC
 import org.apache.spark.sql.{AnalysisException, Column, Row, SparkSession}
 import org.apache.spark.sql.catalyst.analysis.{Resolver, UnresolvedAttribute}
 import org.apache.spark.sql.catalyst.catalog.CatalogUtils
@@ -148,6 +150,8 @@ case class AlterTableSetPropertiesDeltaCommand(
         case k if k == TableFeatureProtocolUtils.propertyKey(ClusteringTableFeature) =>
           throw DeltaErrors.alterTableSetClusteringTableFeatureException(
             ClusteringTableFeature.name)
+        case k if k == ClusteredTableUtils.PROP_CLUSTERING_COLUMNS =>
+          throw DeltaErrors.cannotModifyTableProperty(k)
         case _ =>
           true
       }.toMap
@@ -301,7 +305,7 @@ case class AlterTableDropFeatureDeltaCommand(
         throw DeltaErrors.dropTableFeatureFeatureNotSupportedByProtocol(featureName)
       }
 
-      if (truncateHistory && !removableFeature.isReaderWriterFeature) {
+      if (truncateHistory && !removableFeature.requiresHistoryTruncation) {
         throw DeltaErrors.tableFeatureDropHistoryTruncationNotAllowed()
       }
 
@@ -318,11 +322,11 @@ case class AlterTableDropFeatureDeltaCommand(
       //
       // Note, for features that cannot be disabled we solely rely for correctness on
       // validateRemoval.
-      val isReaderWriterFeature = removableFeature.isReaderWriterFeature
+      val requiresHistoryValidation = removableFeature.requiresHistoryTruncation
       val startTimeNs = System.nanoTime()
       val preDowngradeMadeChanges =
         removableFeature.preDowngradeCommand(table).removeFeatureTracesIfNeeded()
-      if (isReaderWriterFeature) {
+      if (requiresHistoryValidation) {
         // Generate a checkpoint after the cleanup that is based on commits that do not use
         // the feature. This intends to help slow-moving tables to qualify for history truncation
         // asap. The checkpoint is based on a new commit to avoid creating a checkpoint
@@ -355,7 +359,7 @@ case class AlterTableDropFeatureDeltaCommand(
       // Note, if this txn conflicts, we check all winning commits for traces of the feature.
       // Therefore, we do not need to check again for historical versions during conflict
       // resolution.
-      if (isReaderWriterFeature) {
+      if (requiresHistoryValidation) {
         // Clean up expired logs before checking history. This also makes sure there is no
         // concurrent metadataCleanup during findEarliestReliableCheckpoint. Note, this
         // cleanUpExpiredLogs call truncates the cutoff at a minute granularity.
@@ -1019,8 +1023,8 @@ case class AlterTableAddConstraintDeltaCommand(
           throw a.copy(context = Array.empty)
       }
 
-      logInfo(s"Checking that $exprText is satisfied for existing data. " +
-        "This will require a full table scan.")
+      logInfo(log"Checking that ${MDC(DeltaLogKeys.EXPR, exprText)} " +
+        log"is satisfied for existing data. This will require a full table scan.")
       recordDeltaOperation(
           txn.snapshot.deltaLog,
           "delta.ddl.alter.addConstraint.checkExisting") {
@@ -1092,6 +1096,23 @@ case class AlterTableClusterByDeltaCommand(
   override def run(sparkSession: SparkSession): Seq[Row] = {
     val deltaLog = table.deltaLog
     ClusteredTableUtils.validateNumClusteringColumns(clusteringColumns, Some(deltaLog))
+    // If the target table is not a clustered table and there are no clustering columns being added
+    // (CLUSTER BY NONE), do not convert the table into a clustered table.
+    val snapshot = deltaLog.update()
+    if (clusteringColumns.isEmpty &&
+      !ClusteredTableUtils.isSupported(snapshot.protocol)) {
+      logInfo(log"Skipping ALTER TABLE CLUSTER BY NONE on a non-clustered table: " +
+        log"${MDC(DeltaLogKeys.TABLE_NAME, table.name())}.")
+      recordDeltaEvent(
+        deltaLog,
+        "delta.ddl.alter.clusterBy",
+        data = Map(
+          "isClusterByNoneSkipped" -> true,
+          "isNewClusteredTable" -> false,
+          "oldColumnsCount" -> 0,
+          "newColumnsCount" -> 0))
+      return Seq.empty
+    }
     recordDeltaOperation(deltaLog, "delta.ddl.alter.clusterBy") {
       val txn = startTransaction()
 
@@ -1111,6 +1132,7 @@ case class AlterTableClusterByDeltaCommand(
         deltaLog,
         "delta.ddl.alter.clusterBy",
         data = Map(
+          "isClusterByNoneSkipped" -> false,
           "isNewClusteredTable" -> !ClusteredTableUtils.isSupported(txn.protocol),
           "oldColumnsCount" -> oldColumnsCount, "newColumnsCount" -> clusteringColumns.size))
       // Add clustered table properties if the current table is not clustered.

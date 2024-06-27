@@ -23,6 +23,7 @@ import java.util.ConcurrentModificationException
 
 import scala.collection.JavaConverters._
 
+import org.apache.spark.sql.delta.skipping.clustering.temp.{ClusterBySpec}
 import org.apache.spark.sql.delta.actions.{CommitInfo, Metadata, Protocol, TableFeatureProtocolUtils}
 import org.apache.spark.sql.delta.catalog.DeltaCatalog
 import org.apache.spark.sql.delta.commands.AlterTableDropFeatureDeltaCommand
@@ -333,6 +334,13 @@ trait DeltaErrorsBase
     new DeltaAnalysisException(
       errorClass = "DELTA_ADD_CONSTRAINTS",
       messageParameters = Array.empty)
+  }
+
+  def cannotDropCheckConstraintFeature(constraintNames: Seq[String]): AnalysisException = {
+    new DeltaAnalysisException(
+      errorClass = "DELTA_CANNOT_DROP_CHECK_CONSTRAINT_FEATURE",
+      messageParameters = Array(constraintNames.map(formatColumn).mkString(", "))
+    )
   }
 
   def incorrectLogStoreImplementationException(
@@ -3407,6 +3415,30 @@ trait DeltaErrorsBase
       errorClass = "_LEGACY_ERROR_TEMP_DELTA_0008",
       messageParameters = Array(
         UnresolvedAttribute(columnPath).name, schema.treeString, extraErrMsg))
+  }
+
+  def alterTableClusterByOnPartitionedTableException(): Throwable = {
+    new DeltaAnalysisException(
+      errorClass = "DELTA_ALTER_TABLE_CLUSTER_BY_ON_PARTITIONED_TABLE_NOT_ALLOWED",
+      messageParameters = Array.empty)
+  }
+
+  def createTableWithDifferentClusteringException(
+      path: Path,
+      specifiedClusterBySpec: Option[ClusterBySpec],
+      existingClusterBySpec: Option[ClusterBySpec]): Throwable = {
+    new DeltaAnalysisException(
+      errorClass = "DELTA_CREATE_TABLE_WITH_DIFFERENT_CLUSTERING",
+      messageParameters = Array(
+        path.toString,
+        specifiedClusterBySpec
+          .map(_.columnNames.map(_.toString))
+          .getOrElse(Seq.empty)
+          .mkString(", "),
+        existingClusterBySpec
+          .map(_.columnNames.map(_.toString))
+          .getOrElse(Seq.empty)
+          .mkString(", ")))
   }
 }
 

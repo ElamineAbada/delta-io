@@ -51,6 +51,7 @@ public class TransactionBuilderImpl implements TransactionBuilder {
     private Optional<StructType> schema = Optional.empty();
     private Optional<List<String>> partitionColumns = Optional.empty();
     private Optional<SetTransaction> setTxnOpt = Optional.empty();
+    private Optional<Map<String, String>> tableProperties = Optional.empty();
 
     public TransactionBuilderImpl(TableImpl table, String engineInfo, Operation operation) {
         this.table = table;
@@ -86,6 +87,12 @@ public class TransactionBuilderImpl implements TransactionBuilder {
     }
 
     @Override
+    public TransactionBuilder withTableProperties(Engine engine, Map<String, String> properties) {
+        this.tableProperties = Optional.of(new HashMap<>(properties));
+        return this;
+    }
+
+    @Override
     public Transaction build(Engine engine) {
         SnapshotImpl snapshot;
         try {
@@ -104,6 +111,19 @@ public class TransactionBuilderImpl implements TransactionBuilder {
         boolean isNewTable = snapshot.getVersion(engine) < 0;
         validate(engine, snapshot, isNewTable);
 
+        Metadata  metadata = snapshot.getMetadata();
+        boolean shouldUpdateMetadata = false;
+        if (tableProperties.isPresent()) {
+            Map<String, String> validatedProperties =
+                    TableConfig.validateProperties(tableProperties.get());
+            Map<String, String> newProperties =
+                    metadata.filterOutUnchangedProperties(validatedProperties);
+            if (!newProperties.isEmpty()) {
+                shouldUpdateMetadata = true;
+                metadata = metadata.withNewConfiguration(newProperties);
+            }
+        }
+
         return new TransactionImpl(
                 isNewTable,
                 table.getDataPath(),
@@ -112,8 +132,9 @@ public class TransactionBuilderImpl implements TransactionBuilder {
                 engineInfo,
                 operation,
                 snapshot.getProtocol(),
-                snapshot.getMetadata(),
-                setTxnOpt);
+                metadata,
+                setTxnOpt,
+                shouldUpdateMetadata);
     }
 
     /**
@@ -149,7 +170,8 @@ public class TransactionBuilderImpl implements TransactionBuilder {
         }
 
         setTxnOpt.ifPresent(txnId -> {
-            Optional<Long> lastTxnVersion = snapshot.getLatestTransactionVersion(txnId.getAppId());
+            Optional<Long> lastTxnVersion =
+                    snapshot.getLatestTransactionVersion(engine, txnId.getAppId());
             if (lastTxnVersion.isPresent() && lastTxnVersion.get() >= txnId.getVersion()) {
                 throw DeltaErrors.concurrentTransaction(
                         txnId.getAppId(),
@@ -176,12 +198,13 @@ public class TransactionBuilderImpl implements TransactionBuilder {
 
             @Override
             protected Tuple2<Protocol, Metadata> loadTableProtocolAndMetadata(
-                    Optional<SnapshotHint> snapshotHint, long snapshotVersion) {
+                    Engine engine, Optional<SnapshotHint> snapshotHint, long snapshotVersion) {
                 return new Tuple2<>(protocol, metadata);
             }
 
             @Override
-            public Optional<Long> getLatestTransactionIdentifier(String applicationId) {
+            public Optional<Long> getLatestTransactionIdentifier(
+                    Engine engine, String applicationId) {
                 return Optional.empty();
             }
         };
@@ -201,7 +224,7 @@ public class TransactionBuilderImpl implements TransactionBuilder {
                 schema.get(), /* schema */
                 stringArrayValue(partitionColumnsCasePreserving), /* partitionColumns */
                 Optional.of(currentTimeMillis), /* createdTime */
-                stringStringMapValue(Collections.emptyMap()) /* configuration */
+                stringStringMapValue(Collections.emptyMap())
         );
     }
 
